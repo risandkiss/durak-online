@@ -9,47 +9,48 @@ import (
 )
 
 type Card struct {
-	Number int
-	Class  int // 0,1,2,3 - крести, бубны, черви, пики
+	Number int // шестёрка-туз
+	Class  int // 0,1,2,3 - club, diamonds, hearts, spades
 }
 
 type Deck struct {
-	Cards []Card
+	Cards []Card // list of cards
 }
 
 type Player struct {
-	Nickname       string
-	Cards          []Card
-	AttackingCards []Card
-	State          int // 0 - attacking, 1 - defensing, 2 - watching
-	IsBot          bool
+	Nickname       string // nickname
+	Cards          []Card // hand
+	AttackingCards []Card // attacking hand
+	AttackCard     Card
+	IsBot          bool // isBot
 }
 
 type Session struct {
-	Deck     Deck // deck contains not used cards, deck needs to give new cards to players
-	AllCards []Card
-	Players  []Player
-	Turn     int
-	Trump    Card
-	Battles  []int
-	APNumber int
-	DPNumber int
+	Deck       Deck     // deck contains not used cards, deck needs to give new cards to players
+	Players    []Player // list of players
+	Turn       int      // number of turn
+	Trump      Card     // copy of trump card
+	WonPlayers []Player // list of won players
+	APNumber   int      // attacking player now
+	DPNumber   int      // defensing player now
 }
 
 type Stringer interface {
 	String() string
 }
 
-func (x Session) String() string {
-	return fmt.Sprintf("%v", x.Deck)
+func (c Card) String() string {
+	class := []string{"♣", "♦", "♥", "♠"}
+	number := []string{"6", "7", "8", "9", "10", "J", "Q", "K", "A"}
+	return fmt.Sprint(number[c.Number] + class[c.Class])
 }
 
-func (x Deck) String() string {
-	return fmt.Sprintf("%v", x.Cards)
-}
-
-func (x Card) String() string {
-	return fmt.Sprintf("%v", x.Number)
+func (p Player) String() string {
+	s := ""
+	for i, e := range p.Cards {
+		s += fmt.Sprint("[", i+1, "]", e.String(), " ")
+	}
+	return s
 }
 
 func (d *Deck) Shuffle() {
@@ -73,8 +74,7 @@ func (s *Session) PlayersInit(players int) (err error) {
 
 	if players < 2 {
 		return fmt.Errorf("not enough players")
-	}
-	if players >= 5 {
+	} else if players >= 5 {
 		return fmt.Errorf("so enough players")
 	}
 
@@ -88,10 +88,8 @@ func (s *Session) PlayersInit(players int) (err error) {
 			Player{
 				Cards:    s.Deck.Cards[0:6],
 				Nickname: randomSurnames[rand.Intn(len(randomSurnames))] + " " + randomNicknames[rand.Intn(len(randomNicknames))]})
-
 		s.Deck.Cards = s.Deck.Cards[6:]
 	}
-
 	return nil
 }
 
@@ -111,104 +109,42 @@ func (s *Session) Refill(playerNumber int) {
 	return
 }
 
-// выводит имя карты, руки и так далее
-func (s Session) View(c interface{}) string {
-	class := []string{"♣", "♦", "♥", "♠"}
-	number := []string{"6", "7", "8", "9", "10", "В", "Д", "К", "Т"}
-	switch v := c.(type) {
-	case Card:
-		return number[v.Number] + class[v.Class]
-	case Player:
-		s := ""
-		for i := range v.Cards {
-			s += "[" + strconv.Itoa(i+1) + "]" + number[v.Cards[i].Number] + class[v.Cards[i].Class] + ", "
-		}
-		return s
-	case []Card:
-		s := ""
-		for _, e := range v {
-			s += number[e.Number] + class[e.Class] + " "
-		}
-		return s
-	}
-	return ""
-}
-
-// решает кто победил в сражении и кто получает мусорные карты
-// ошибка используется для выхода из батла и исправлении ошибок игроками или мной
-func (s *Session) Battle(attackingPlayer, defensingPlayer int) error {
+// Battle check who will win
+func (s *Session) Battle() (int, error) {
+	attackingPlayer := s.APNumber
+	defensingPlayer := s.DPNumber
 	exhaust := []Card{}
-	wonPlayer := -1
-	aph := s.Players[attackingPlayer].AttackingCards
-	dph := s.Players[defensingPlayer].AttackingCards
-
-	fmt.Println("атакующая рука:", s.View(aph))
-	fmt.Println("зашишуюсяся рука:", s.View(dph))
-
-	if len(aph) != len(dph) {
-		return fmt.Errorf("wrongHands: ")
-	}
-
-	counter := len(aph)
-	for i := range aph {
-		if aph[i].Class == dph[i].Class {
-			if aph[i].Number == dph[i].Number {
-				return fmt.Errorf("wrongDeck: ")
-			} else if aph[i].Number < dph[i].Number {
-				exhaust = append(exhaust, aph[i])
-				exhaust = append(exhaust, dph[i])
-				aph = remove(aph, i)
-				dph = remove(dph, i)
-				counter -= 1
-			} else if aph[i].Number > dph[i].Number {
-				exhaust = append(exhaust, aph[i])
-				exhaust = append(exhaust, dph[i])
-				aph = remove(aph, i)
-				dph = remove(dph, i)
-				break
-			}
-		} else {
-			if aph[i].Class == s.Trump.Class && dph[i].Class != s.Trump.Class {
-				exhaust = append(exhaust, aph[i])
-				exhaust = append(exhaust, dph[i])
-				aph = remove(aph, i)
-				dph = remove(dph, i)
-				break
-			} else if dph[i].Class == s.Trump.Class && aph[i].Class != s.Trump.Class {
-				exhaust = append(exhaust, aph[i])
-				exhaust = append(exhaust, dph[i])
-				aph = remove(aph, i)
-				dph = remove(dph, i)
-				counter -= 1
-			} else if dph[i].Class != aph[i].Class {
-				exhaust = append(exhaust, aph[i])
-				exhaust = append(exhaust, dph[i])
-				aph = remove(aph, i)
-				dph = remove(dph, i)
-				break
-			}
-		}
-	}
 	s.Turn += 1
-	s.Players[attackingPlayer].AttackingCards = []Card{}
-	s.Players[defensingPlayer].AttackingCards = []Card{}
-	if counter == 0 {
-		wonPlayer = defensingPlayer
-		s.Refill(attackingPlayer)
-		s.Refill(defensingPlayer)
-		fmt.Println("бито")
-		s.APNumber += 1
+
+	apc := s.Players[attackingPlayer].AttackCard
+	dpc := s.Players[defensingPlayer].AttackCard
+
+	s.Players[defensingPlayer].AttackCard = Card{}
+	s.Players[attackingPlayer].AttackCard = Card{}
+
+	counter := 1
+	exhaust = append(exhaust, apc, dpc)
+	if apc.Class == dpc.Class && apc.Number != dpc.Number {
+		if apc.Number < dpc.Number {
+			counter -= 1
+		}
+	} else if apc.Class != dpc.Class {
+		if !(apc.Class == s.Trump.Class || dpc.Class != s.Trump.Class) {
+			counter -= 1
+		}
 	} else {
-		wonPlayer = attackingPlayer
-		s.Refill(attackingPlayer)
-		s.Players[defensingPlayer].Cards = append(exhaust, s.Players[defensingPlayer].Cards...)
-		fmt.Println("ахахха", s.Players[defensingPlayer].Nickname, "загрёб")
+		return 0, fmt.Errorf("doubleCard: ")
 	}
-	if wonPlayer != -1 {
-		s.Battles = append(s.Battles, wonPlayer)
-		return nil
+
+	s.Refill(attackingPlayer)
+
+	if counter == 0 {
+		s.Refill(defensingPlayer)
+		s.APNumber += 1
+		return -1, nil
 	} else {
-		return fmt.Errorf("unknownError: ")
+		s.Players[defensingPlayer].Cards = append(exhaust, s.Players[defensingPlayer].Cards...)
+		return defensingPlayer, nil
 	}
 }
 
@@ -216,40 +152,41 @@ func remove(slice []Card, s int) []Card {
 	return append(slice[:s], slice[s+1:]...)
 }
 
-// генерирует массив атакующих карт по руке
-func (s *Session) Attack(playerNumber int, input string) error {
-	stringsInput := strings.Split(input, "")
-	toHand := []Card{}
-
-	for i, e := range stringsInput {
-		v, err := strconv.Atoi(e)
-		if err != nil {
-			return err
-		}
-		toHand = append(toHand, s.Players[playerNumber].Cards[v-1])
-		s.Players[playerNumber].Cards = remove(s.Players[playerNumber].Cards, v-1-i)
+// choose card
+func (p *Player) GetAttackCard(input string) error {
+	inputString := strings.Split(input, "")[0]
+	inputNumber, err := strconv.Atoi(inputString)
+	if err != nil {
+		return err
 	}
-	s.Players[playerNumber].AttackingCards = toHand
+	p.AttackCard = p.Cards[inputNumber-1]
+	p.Cards = remove(p.Cards, inputNumber-1)
 	return nil
 }
 
-// this function should create attack to bot
-func (p *Player) AIAttack() error {
-	numbers := []int{}
-	numbers = append(numbers, rand.Intn(6))
-	for i, e := range numbers {
-		p.AttackingCards = append(p.AttackingCards, p.Cards[e])
-		p.Cards = remove(p.Cards, e-i) // скорее всего что бы получить точное значение
-		// нужно удалять не элемент по индексу, а раньше на i
-	}
+// bot takes card to attack
+func (p *Player) BGetAttackCard() error {
+	number := rand.Intn(6)
+	p.AttackCard = p.Cards[number]
+	p.Cards = remove(p.Cards, number)
 	return nil
 }
 
-//если сейчас первый ход, то сражается первый и второй игроки и тд
+func (s *Session) Stdout() {
+	fmt.Println("-----------")
+	fmt.Println("атакующий игрок:", s.Players[s.APNumber].Nickname)
+	fmt.Println("защищающийся игрок:", s.Players[s.DPNumber].Nickname)
+	fmt.Println("козыри:", s.Trump)
+	fmt.Println("ход:", s.Turn)
+	fmt.Println("карт в колоде:", len(s.Deck.Cards))
+	fmt.Println("у врага карт:", len(s.Players[1].Cards))
+	fmt.Println("твои карты:", s.Players[0])
+}
+
+//
 func main() {
 	var session Session
-
-	err := session.PlayersInit(2) // инициализация n игроков
+	err := session.PlayersInit(2) // init N players
 	if err != nil {
 		panic(err)
 	}
@@ -257,8 +194,8 @@ func main() {
 	firstBot := 1
 	me := 0
 
-	fmt.Println("козыри:", session.View(session.Trump))
-	fmt.Println("враги по имени:", session.Players[firstBot].Nickname) // тут надо цикл хуячить
+	fmt.Println("козыри:", session.Trump)
+	fmt.Println("враги по имени:", session.Players[firstBot].Nickname) // need loop
 	fmt.Print("\nвведите свой никнейм: ")
 	fmt.Scan(&session.Players[me].Nickname)
 	fmt.Println()
@@ -267,10 +204,19 @@ func main() {
 		if len(session.Deck.Cards) == 0 {
 			for i, e := range session.Players {
 				if len(e.Cards) == 0 {
+					fmt.Println("игрок", e.Nickname, "выбыл")
+					session.WonPlayers = append(session.WonPlayers, e)
 					session.Players = append(session.Players[:i], session.Players[i+1:]...)
 				}
 			}
 		}
+		if len(session.Players) == 1 {
+			fmt.Println("игра завершена")
+			fmt.Println("побидитель", session.WonPlayers[0].Nickname)
+			break
+		}
+
+		session.Stdout()
 
 		if session.APNumber >= len(session.Players) {
 			session.APNumber = 0
@@ -281,39 +227,32 @@ func main() {
 			session.DPNumber = session.APNumber + 1
 		}
 
-		fmt.Println("-----------")
-		fmt.Println("атакующий игрок:", session.Players[session.APNumber].Nickname)
-		fmt.Println("защищающийся игрок:", session.Players[session.DPNumber].Nickname)
-		fmt.Println("козыри:", session.View(session.Trump))
-		fmt.Println("ход:", session.Turn)
-		fmt.Println("карт в колоде:", len(session.Deck.Cards))
-		fmt.Println("у врага карт:", len(session.Players[firstBot].Cards))
-		fmt.Println("твои карты:", session.View(session.Players[me]))
 		if session.APNumber == firstBot {
-			err = session.Players[session.APNumber].AIAttack()
+			err = session.Players[session.APNumber].BGetAttackCard()
 			if err != nil {
 				panic(err)
 			}
-			fmt.Println("тебя атакуют этим:", session.View(session.Players[session.APNumber].AttackingCards))
+			fmt.Println("тебя атакуют этим:", session.Players[session.APNumber].AttackCard)
 			fmt.Println("выбери защиту из своих карт")
 			fmt.Print("> ")
 
 			input := ""
 			fmt.Scan(&input)
-			err = session.Attack(session.DPNumber, input)
+			err = session.Players[session.DPNumber].GetAttackCard(input)
 			if err != nil {
 				panic(err)
 			}
 
-			err = session.Battle(session.APNumber, session.DPNumber)
-			if err == fmt.Errorf("deckIsEmpty: ") {
-				fmt.Println("кто то победил, хз даже кто хд\nнажмите ентер или не ентер для выхода...")
-				d := ""
-				fmt.Scan(&d)
-			} else if err != nil {
+			res, err := session.Battle()
+			if err != nil {
 				panic(err)
 			}
 
+			if res == -1 {
+				fmt.Println("бито")
+			} else {
+				fmt.Println("игрок", session.Players[res], "проиграл")
+			}
 		} else if session.APNumber == me {
 			fmt.Println("выбери атаку из своих карт")
 			fmt.Print("> ")
@@ -321,25 +260,28 @@ func main() {
 			input := ""
 			fmt.Scan(&input)
 
-			err = session.Attack(session.APNumber, input)
+			err = session.Players[session.APNumber].GetAttackCard(input)
 			if err != nil {
 				panic(err)
 			}
-			err = session.Players[session.DPNumber].AIAttack()
+			err = session.Players[session.DPNumber].BGetAttackCard()
 			if err != nil {
 				panic(err)
 			}
 
-			fmt.Println("тебя отбили картой: ", session.View(session.Players[session.DPNumber].AttackingCards))
+			fmt.Println("тебя отбили картой: ", session.Players[session.DPNumber].AttackCard)
 
-			err = session.Battle(session.APNumber, session.DPNumber)
-			if err == fmt.Errorf("deckIsEmpty: ") {
-				fmt.Println("кто то победил, хз даже кто хд\nнажмите ентер или не ентер для выхода...")
-				d := ""
-				fmt.Scan(&d)
-			} else if err != nil {
+			res, err := session.Battle()
+			if err != nil {
 				panic(err)
+			}
+
+			if res == -1 {
+				fmt.Println("бито")
+			} else {
+				fmt.Println("игрок", session.Players[res], "проиграл")
 			}
 		}
 	}
+	fmt.Println("хуй")
 }
