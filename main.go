@@ -16,24 +16,23 @@ type Card struct {
 type Deck []Card
 
 type Player struct {
-	Nickname       string // nickname
-	Cards          []Card // hand
-	AttackingCards []Card // attacking hand
-	AttackCard     Card
-	IsActive       bool
+	Nickname   string // nickname
+	Cards      []Card // hand
+	BattleCard Card
+	ID         int
+	State      int // 0 spectator, 1 atacker, 2 defender
 }
 
 type Players []Player
 
 type Session struct {
-	Deck                 Deck    // deck contains not used cards, deck needs to give new cards to players
-	Players              Players // list of players
-	Turn                 int     // number of turn
-	Trump                Card    // copy of trump card
-	Dumb                 Player  // list of won players
-	APNumber             int     // attacking player now
-	DPNumber             int     // defensing player now
-	NumberOfActivePlayer int
+	Deck     Deck    // deck contains not used cards, deck needs to give new cards to players
+	Players  Players // list of players
+	Turn     int     // number of turn
+	Trump    Card    // copy of trump card
+	Dumb     Player  // list of won players
+	Attacker *Player
+	Defender *Player
 }
 
 type Stringer interface {
@@ -55,23 +54,15 @@ func (p Player) String() (s string) {
 
 func (p Players) String() (s string) {
 	for _, e := range p {
-		s += fmt.Sprint(e.Nickname, ", ")
+		s += fmt.Sprint(e.Nickname, "/", len(e.Cards), ", ")
 	}
 	return
 }
 
 // if game should finish return true
 func (s *Session) IsFinish() bool {
-	c := 0
-	pl := Player{}
-	for _, e := range s.Players {
-		if e.IsActive {
-			pl = e
-			c++
-		}
-	}
-	if c == 1 { // если с < 1 то это ошибка, но мне похуй
-		s.Dumb = pl
+	if len(s.Players) == 1 {
+		s.Dumb = s.Players[0]
 		return true
 	}
 	return false
@@ -93,8 +84,7 @@ func (d *Deck) Create() {
 
 // create players by number
 func (s *Session) PlayersInit(players int) (err error) {
-	randomNicknames := []string{"плющь", "жидяра", "хуй", "шизоид", "лис", "фембой", "трапик"}
-	randomSurnames := []string{"анальный", "жопный", "сильный", "вонючий", "непобедимый", "милый"}
+	randomNicknames := []string{"фембой", "трапик", "жучара", "лох", "гречка"}
 
 	if players < 2 {
 		return fmt.Errorf("not enough players")
@@ -111,22 +101,22 @@ func (s *Session) PlayersInit(players int) (err error) {
 			s.Players,
 			Player{
 				Cards:    s.Deck[0:6],
-				Nickname: randomSurnames[rand.Intn(len(randomSurnames))] + " " + randomNicknames[rand.Intn(len(randomNicknames))],
-				IsActive: true})
+				Nickname: randomNicknames[i], //rand.Intn(len(randomNicknames))
+				ID:       i})
 		s.Deck = s.Deck[6:]
 	}
 	return nil
 }
 
-func (s *Session) Refill(playerNumber int) {
-	if len(s.Players[playerNumber].Cards) < 6 {
+func (s *Session) Refill(p *Player) {
+	if len(p.Cards) < 6 {
 		for i := 0; ; i++ {
 			if len(s.Deck) == 0 {
 				return
 			}
-			s.Players[playerNumber].Cards = append(s.Players[playerNumber].Cards, s.Deck[0])
+			p.Cards = append(p.Cards, s.Deck[0])
 			s.Deck = s.Deck[1:]
-			if len(s.Players[playerNumber].Cards) == 6 {
+			if len(p.Cards) == 6 {
 				return
 			}
 		}
@@ -135,37 +125,37 @@ func (s *Session) Refill(playerNumber int) {
 
 // if wins defender then true
 func (s *Session) Battle() (bool, error) {
-	attackingPlayer := s.APNumber
-	defensingPlayer := s.DPNumber
 	exhaust := []Card{}
 	s.Turn += 1
 
-	apc := s.Players[attackingPlayer].AttackCard
-	dpc := s.Players[defensingPlayer].AttackCard
-	s.Players[defensingPlayer].AttackCard = Card{}
-	s.Players[attackingPlayer].AttackCard = Card{}
+	apc := s.Attacker.BattleCard
+	dpc := s.Defender.BattleCard
+	s.Attacker.BattleCard = Card{}
+	s.Defender.BattleCard = Card{}
 
-	counter := false
+	defenderWon := false
 	exhaust = append(exhaust, apc, dpc)
 	if apc.Class == dpc.Class && apc.Number != dpc.Number {
 		if apc.Number < dpc.Number {
-			counter = true
+			defenderWon = true
 		}
 	} else if apc.Class != dpc.Class {
 		if !(apc.Class == s.Trump.Class || dpc.Class != s.Trump.Class) {
-			counter = true
+			defenderWon = true
 		}
-	} else {
+	} else if apc.Class == dpc.Class && apc.Number == dpc.Number {
 		return false, fmt.Errorf("doubleCard: ")
+	} else {
+		return false, fmt.Errorf("unknownError: ")
 	}
 
-	s.Refill(attackingPlayer)
+	s.Refill(s.Attacker)
 
-	if counter {
-		s.Refill(defensingPlayer)
+	if defenderWon {
+		s.Refill(s.Defender)
 		return true, nil
 	} else {
-		s.Players[defensingPlayer].Cards = append(exhaust, s.Players[defensingPlayer].Cards...)
+		s.Defender.Cards = append(exhaust, s.Defender.Cards...)
 		return false, nil
 	}
 }
@@ -175,49 +165,93 @@ func remove(slice []Card, s int) []Card {
 }
 
 // choose card
-func (p *Player) GetAttackCard(input string) error {
+func (p *Player) GetBattleCard(input string) error {
 	inputString := strings.Split(input, "")[0]
 	inputNumber, err := strconv.Atoi(inputString)
 	if err != nil {
 		return err
 	}
-	p.AttackCard = p.Cards[inputNumber-1]
+	p.BattleCard = p.Cards[inputNumber-1]
 	p.Cards = remove(p.Cards, inputNumber-1)
 	return nil
 }
 
 // bot takes card to attack
-func (p *Player) BGetAttackCard() error {
+func (p *Player) BGetBattleCard() error {
+	if len(p.Cards) == 0 {
+		return fmt.Errorf("indexError: ")
+	}
 	number := rand.Intn(len(p.Cards))
-	p.AttackCard = p.Cards[number]
+	p.BattleCard = p.Cards[number]
 	p.Cards = remove(p.Cards, number)
 	return nil
 }
 
+func (s *Session) Update() {
+	for i := range s.Players {
+		if s.Players[i].State == 1 {
+			s.Attacker = &s.Players[i]
+		}
+		if s.Players[i].State == 2 {
+			s.Defender = &s.Players[i]
+		}
+	}
+}
+
+func (p *Players) ChangeState(n int) {
+	for i := range *p {
+		if (*p)[i].State == 2 {
+			(*p)[i].State = 1
+			if i+n == len(*p) {
+				(*p)[0].State = 2
+			} else {
+				(*p)[i+n].State = 2
+			}
+			return
+		}
+	}
+}
+
 func (s Session) Stdout(me int) {
 	fmt.Println("-----------")
-	fmt.Println("атакующий игрок:", s.Players[s.APNumber].Nickname)
-	fmt.Println("защищающийся игрок:", s.Players[s.DPNumber].Nickname)
+	fmt.Println("игроки/карт:", s.Players)
+	fmt.Println("атакует:", s.Attacker.Nickname)
+	fmt.Println("защищается:", s.Defender.Nickname)
 	fmt.Println("козыри:", s.Trump)
 	fmt.Println("ход:", s.Turn)
 	fmt.Println("карт в колоде:", len(s.Deck))
-	for _, e := range s.Players[1:] {
-		fmt.Println("у", e.Nickname, len(e.Cards), "карт")
+	if p, ok := s.Players.ByID(me); ok {
+		fmt.Println("твои карты:", p)
+	} else {
+		fmt.Println("вы выбыли")
 	}
-	fmt.Println("твои карты:", s.Players[me])
+
 }
 
-func (s *Session) SomeoneGone() (Player, bool) {
+func (p *Players) ByID(id int) (*Player, bool) {
+	for i := range *p {
+		if (*p)[i].ID == id {
+			return &(*p)[i], true
+		}
+	}
+	return &Player{}, false
+}
+
+func (s *Session) SomeoneGone() (Players, bool) {
+	ps := []Player{}
 	if len(s.Deck) == 0 {
 		for i, e := range s.Players {
 			if len(e.Cards) == 0 {
-				s.Players[i].IsActive = false
-				s.NumberOfActivePlayer--
-				return s.Players[i], true
+				ps = append(ps, s.Players[i])
+				s.Players = append(s.Players[:i], s.Players[i+1:]...)
 			}
 		}
 	}
-	return Player{}, false
+
+	if len(ps) != 0 {
+		return ps, true
+	}
+	return ps, false
 }
 
 //
@@ -229,23 +263,18 @@ func main() {
 	}
 
 	me := 0
+	fbot := 1
+
+	session.Attacker, _ = session.Players.ByID(me)
+	session.Attacker.State = 1
+	session.Defender, _ = session.Players.ByID(fbot)
+	session.Defender.State = 2
+
 	fmt.Print("\nвведите свой никнейм: ")
 	fmt.Scan(&session.Players[me].Nickname)
 	fmt.Println()
 
-	fmt.Println("козыри:", session.Trump)
-	fmt.Println("игроки:", session.Players) // need loop
-
-	session.APNumber = 0
-	session.DPNumber = 1
-
-	session.NumberOfActivePlayer = len(session.Players)
-
 	for session.Turn = 1; session.Turn != 100; {
-		if gone, yes := session.SomeoneGone(); yes {
-			fmt.Println("игрок", gone.Nickname, "выбыл")
-		}
-
 		if session.IsFinish() {
 			fmt.Println("игра завершена")
 			fmt.Println("дурак -", session.Dumb.Nickname)
@@ -254,44 +283,44 @@ func main() {
 
 		session.Stdout(me)
 
-		if session.APNumber != me && session.DPNumber == me {
-			err = session.Players[session.APNumber].BGetAttackCard()
+		if session.Defender.ID == me {
+			err = session.Attacker.BGetBattleCard()
 			if err != nil {
 				panic(err)
 			}
-			fmt.Println("тебя атакуют этим:", session.Players[session.APNumber].AttackCard)
-			fmt.Println("выбери защиту из своих карт")
+			fmt.Println("тебя атакуют этим:", session.Attacker.BattleCard)
+			fmt.Println("защищайся")
 			fmt.Print("> ")
 
 			input := ""
 			fmt.Scan(&input)
-			err = session.Players[session.DPNumber].GetAttackCard(input)
+			err = session.Defender.GetBattleCard(input)
 			if err != nil {
 				panic(err)
 			}
-		} else if session.APNumber == me && session.DPNumber != me {
-			fmt.Println("выбери атаку из своих карт")
+		} else if session.Attacker.ID == me {
+			fmt.Println("атакуй")
 			fmt.Print("> ")
 
 			input := ""
 			fmt.Scan(&input)
-			err = session.Players[session.APNumber].GetAttackCard(input)
+			err = session.Attacker.GetBattleCard(input)
 			if err != nil {
 				panic(err)
 			}
 
-			err = session.Players[session.DPNumber].BGetAttackCard()
+			err = session.Defender.BGetBattleCard()
 			if err != nil {
 				panic(err)
 			}
-			fmt.Println("тебя попытались отбить: ", session.Players[session.DPNumber].AttackCard)
+			fmt.Println("тебя попытались отбить: ", session.Defender.BattleCard)
 
 		} else {
-			err = session.Players[session.APNumber].BGetAttackCard()
+			err = session.Attacker.BGetBattleCard()
 			if err != nil {
 				panic(err)
 			}
-			err = session.Players[session.DPNumber].BGetAttackCard()
+			err = session.Defender.BGetBattleCard()
 			if err != nil {
 				panic(err)
 			}
@@ -301,30 +330,18 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-
 		if res {
 			fmt.Println("бито")
-			session.APNumber++
-			session.DPNumber++
 		} else {
-			fmt.Println("игрок", session.Players[session.DPNumber].Nickname, "забрал")
-			session.APNumber += 2
-			session.DPNumber += 2
+			fmt.Println("игрок", session.Defender.Nickname, "забрал")
 		}
 
-		if session.APNumber >= session.NumberOfActivePlayer {
-			session.APNumber = session.APNumber - session.NumberOfActivePlayer
-		}
-		if session.DPNumber >= session.NumberOfActivePlayer {
-			session.DPNumber = session.DPNumber - session.NumberOfActivePlayer
+		if gone, yes := session.SomeoneGone(); yes {
+			fmt.Println("игроки", gone, "выбыли")
 		}
 
-		// if !(session.DPNumber-session.APNumber == 1 && (session.DPNumber == 0 && session.APNumber == session.NumberOfActivePlayer-1)) {
-		// 	fmt.Println("пиздец")
-		// 	break
-		// }
-
-		//fmt.Println(session.APNumber, session.DPNumber)
+		session.Players.ChangeState(1)
+		session.Update()
 	}
 	fmt.Println("игра окончена всем спасибо")
 }
