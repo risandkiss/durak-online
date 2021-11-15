@@ -37,9 +37,8 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			fmt.Println("тебя атакуют этим:", session.Attacker.BattleCard)
-			fmt.Println("защищайся")
-			fmt.Print("> ")
+			fmt.Println("враг:", session.Attacker.BattleCard)
+			fmt.Println("защищайся> ")
 
 			input := ""
 			fmt.Scan(&input)
@@ -48,9 +47,7 @@ func main() {
 				log.Fatal(err)
 			}
 		} else if session.Attacker.ID == me {
-			fmt.Println("атакуй")
-			fmt.Print("> ")
-
+			fmt.Println("атакуй> ") // тут было бы прикольно сделать вместо ввода цифры сразу карту и vs карта врага
 			input := ""
 			fmt.Scan(&input)
 			err = session.Attacker.GetBattleCard(input)
@@ -62,8 +59,7 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			fmt.Println("тебя попытались отбить: ", session.Defender.BattleCard)
-
+			fmt.Println("враг: ", session.Defender.BattleCard)
 		} else {
 			err = session.Attacker.BGetBattleCard()
 			if err != nil {
@@ -73,6 +69,7 @@ func main() {
 			if err != nil {
 				log.Fatal("DefenderError: ", err)
 			}
+			fmt.Println(session.Attacker.Nickname, "против", session.Defender.Nickname)
 		}
 
 		res, err := session.Battle()

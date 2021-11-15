@@ -139,26 +139,23 @@ func (s *Session) Battle() (string, error) {
 	exhaust := []Card{}
 	s.Turn += 1
 
-	apc := s.Attacker.BattleCard
-	dpc := s.Defender.BattleCard
-	s.Attacker.BattleCard = Card{}
-	s.Defender.BattleCard = Card{}
-
 	defenderWon := false
-	exhaust = append(exhaust, apc, dpc)
-	if apc.Class == dpc.Class && apc.Number != dpc.Number {
-		if apc.Number < dpc.Number {
+	exhaust = append(exhaust, s.Attacker.BattleCard, s.Defender.BattleCard)
+	if s.Attacker.BattleCard.Class == s.Defender.BattleCard.Class && s.Attacker.BattleCard.Number != s.Defender.BattleCard.Number {
+		if s.Attacker.BattleCard.Number < s.Defender.BattleCard.Number {
 			defenderWon = true
 		}
-	} else if apc.Class != dpc.Class {
-		if !(apc.Class == s.Trump.Class || dpc.Class != s.Trump.Class) {
+	} else if s.Attacker.BattleCard.Class != s.Defender.BattleCard.Class {
+		if !(s.Attacker.BattleCard.Class == s.Trump.Class || s.Defender.BattleCard.Class != s.Trump.Class) {
 			defenderWon = true
 		}
-	} else if apc.Class == dpc.Class && apc.Number == dpc.Number {
+	} else if s.Attacker.BattleCard.Class == s.Defender.BattleCard.Class && s.Attacker.BattleCard.Number == s.Defender.BattleCard.Number {
 		return "", fmt.Errorf("doubleCard: ")
 	} else {
 		return "", fmt.Errorf("unknownError: ")
 	}
+	s.Attacker.BattleCard = Card{}
+	s.Defender.BattleCard = Card{}
 
 	s.Refill(s.Attacker)
 
@@ -200,17 +197,13 @@ func (p *Player) BGetBattleCard() error {
 }
 
 func (s Session) Stdout(me int) {
-	fmt.Println("-----------")
-	fmt.Println("игроки/карт:", s.Players)
+	fmt.Println("=-=-=-=-=-=-=-=-=-=-=-=-=")
+	fmt.Println("игрок/карт:", s.Players)
+	fmt.Println("ход:", s.Turn, "|", "колода:", len(s.Deck), "|", "козырь:", s.Trump)
 	fmt.Println("атакует:", s.Attacker.Nickname)
 	fmt.Println("защищается:", s.Defender.Nickname)
-	fmt.Println("козыри:", s.Trump)
-	fmt.Println("ход:", s.Turn)
-	fmt.Println("карт в колоде:", len(s.Deck))
 	if p, ok := s.Players.ByID(me); ok {
-		fmt.Println("твои карты:", p)
-	} else {
-		fmt.Println("ты выбыл")
+		fmt.Println("твоя рука:", p)
 	}
 }
 
