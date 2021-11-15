@@ -6,7 +6,7 @@ import (
 	"log"
 )
 
-//
+// main
 func main() {
 	var session engine.Session
 	err := session.PlayersInit(5) // init N players

@@ -34,6 +34,7 @@ type Session struct {
 	Defender *Player
 }
 
+// stringer
 type Stringer interface {
 	String() string
 }
@@ -51,6 +52,14 @@ func (p Player) String() (s string) {
 	return
 }
 
+func (p Players) String() (s string) {
+	for _, e := range p {
+		s += fmt.Sprint(e.Nickname, "/", len(e.Cards), ", ")
+	}
+	return
+}
+
+// take next player in the player list IF IDs NOT SHUFFELED IN THE LIST
 func (ps Players) NextFrom(p *Player) *Player {
 	np, ok := ps.ByID(p.ID + 1)
 	if ok {
@@ -65,27 +74,46 @@ func (ps Players) NextFrom(p *Player) *Player {
 	}
 }
 
-func (p Players) String() (s string) {
-	for _, e := range p {
-		s += fmt.Sprint(e.Nickname, "/", len(e.Cards), ", ")
+// gets player by id
+func (p *Players) ByID(id int) (*Player, bool) {
+	for i := range *p {
+		if (*p)[i].ID == id {
+			return &(*p)[i], true
+		}
 	}
-	return
+	return &Player{}, false
 }
 
-// if game should finish return true
-func (s *Session) IsFinish() bool {
-	if len(s.Players) == 1 {
-		s.Dumb = s.Players[0]
-		return true
+// take battle card for player by input
+func (p *Player) GetBattleCard(input string) error {
+	inputString := strings.Split(input, "")[0]
+	inputNumber, err := strconv.Atoi(inputString)
+	if err != nil {
+		return err
 	}
-	return false
+	p.BattleCard = p.Cards[inputNumber-1]
+	p.Cards = append(p.Cards[:inputNumber-1], p.Cards[inputNumber:]...)
+	return nil
 }
 
+// take battle card for bot
+func (p *Player) BGetBattleCard() error {
+	if len(p.Cards) == 0 {
+		return fmt.Errorf("indexError: ")
+	}
+	number := rand.Intn(len(p.Cards))
+	p.BattleCard = p.Cards[number]
+	p.Cards = append(p.Cards[:number], p.Cards[number+1:]...)
+	return nil
+}
+
+// shuffeles deck
 func (d *Deck) Shuffle() {
 	rand.Seed(time.Now().UnixNano())
 	rand.Shuffle(len(*d), func(i, j int) { (*d)[i], (*d)[j] = (*d)[j], (*d)[i] })
 }
 
+// creates deck
 func (d *Deck) Create() {
 	for i := 0; i != 9; i++ {
 		for j := 0; j != 4; j++ {
@@ -95,9 +123,9 @@ func (d *Deck) Create() {
 	}
 }
 
-// create players by number
+// creates bots and deck before main loop
 func (s *Session) PlayersInit(players int) (err error) {
-	randomNicknames := []string{"фембой", "трапик", "жучара", "лох", "гречка", "жаба", "петух"}
+	randomNicknames := []string{"игрок 2", "игрок 3", "игрок 4", "игрок 5", "игрок 6", "игрок 7", "игрок 8"}
 
 	if players < 2 || players >= 6 {
 		return fmt.Errorf("wrongPlayerNumber: ")
@@ -119,6 +147,16 @@ func (s *Session) PlayersInit(players int) (err error) {
 	return nil
 }
 
+// understand should game ends
+func (s *Session) IsFinish() bool {
+	if len(s.Players) == 1 {
+		s.Dumb = s.Players[0]
+		return true
+	}
+	return false
+}
+
+// refill hand of player
 func (s *Session) Refill(p *Player) {
 	if len(p.Cards) < 6 {
 		for i := 0; ; i++ {
@@ -134,7 +172,7 @@ func (s *Session) Refill(p *Player) {
 	}
 }
 
-// if wins defender then true
+// conition for know winner and looser
 func (s *Session) Battle() (string, error) {
 	exhaust := []Card{}
 	s.Turn += 1
@@ -173,49 +211,6 @@ func (s *Session) Battle() (string, error) {
 	}
 }
 
-// choose card
-func (p *Player) GetBattleCard(input string) error {
-	inputString := strings.Split(input, "")[0]
-	inputNumber, err := strconv.Atoi(inputString)
-	if err != nil {
-		return err
-	}
-	p.BattleCard = p.Cards[inputNumber-1]
-	p.Cards = append(p.Cards[:inputNumber-1], p.Cards[inputNumber:]...)
-	return nil
-}
-
-// bot takes card to attack
-func (p *Player) BGetBattleCard() error {
-	if len(p.Cards) == 0 {
-		return fmt.Errorf("indexError: ")
-	}
-	number := rand.Intn(len(p.Cards))
-	p.BattleCard = p.Cards[number]
-	p.Cards = append(p.Cards[:number], p.Cards[number+1:]...)
-	return nil
-}
-
-func (s Session) Stdout(me int) {
-	fmt.Println("=-=-=-=-=-=-=-=-=-=-=-=-=")
-	fmt.Println("игрок/карт:", s.Players)
-	fmt.Println("ход:", s.Turn, "|", "колода:", len(s.Deck), "|", "козырь:", s.Trump)
-	fmt.Println("атакует:", s.Attacker.Nickname)
-	fmt.Println("защищается:", s.Defender.Nickname)
-	if p, ok := s.Players.ByID(me); ok {
-		fmt.Println("твоя рука:", p)
-	}
-}
-
-func (p *Players) ByID(id int) (*Player, bool) {
-	for i := range *p {
-		if (*p)[i].ID == id {
-			return &(*p)[i], true
-		}
-	}
-	return &Player{}, false
-}
-
 func (s *Session) SomeoneGone() (Players, bool) {
 	ps := []Player{}
 	if len(s.Deck) == 0 {
@@ -230,4 +225,16 @@ func (s *Session) SomeoneGone() (Players, bool) {
 		return ps, true
 	}
 	return ps, false
+}
+
+// outputs, i will change this
+func (s Session) Stdout(me int) {
+	fmt.Println("=-=-=-=-=-=-=-=-=-=-=-=-=")
+	fmt.Println("игрок/карт:", s.Players)
+	fmt.Println("ход:", s.Turn, "|", "колода:", len(s.Deck), "|", "козырь:", s.Trump)
+	fmt.Println("атакует:", s.Attacker.Nickname)
+	fmt.Println("защищается:", s.Defender.Nickname)
+	if p, ok := s.Players.ByID(me); ok {
+		fmt.Println("твоя рука:", p)
+	}
 }
